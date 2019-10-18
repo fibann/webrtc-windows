@@ -224,7 +224,69 @@ int WinUWPH264EncoderImpl::Release() {
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
-ComPtr<IMFSample> WinUWPH264EncoderImpl::FromVideoFrame(const VideoFrame& frame) {
+class VideoFrameMFBuffer : public Microsoft::WRL::RuntimeClass<
+          Microsoft::WRL::RuntimeClassFlags<
+              Microsoft::WRL::RuntimeClassType::ClassicCom>,
+                             IMFMediaBuffer> {
+ public:
+  HRESULT RuntimeClassInitialize(rtc::scoped_refptr<I420BufferInterface> buffer) {
+    buffer_ = buffer;
+    total_size_ = buffer_->StrideY() * buffer_->height() +
+                  buffer_->StrideU() * (buffer_->height() + 1) / 2 +
+                  buffer_->StrideV() * (buffer_->height() + 1) / 2;
+    return S_OK;
+  }
+  HRESULT STDMETHODCALLTYPE Lock(BYTE** ppbBuffer,
+                                 DWORD* pcbMaxLength,
+                                 DWORD* pcbCurrentLength) override {
+    if (!ppbBuffer) {
+      return E_INVALIDARG;
+    }
+    *ppbBuffer = const_cast<uint8_t*>(buffer_->DataY());
+
+	auto length = total_size_;
+    if (pcbMaxLength) {
+      *pcbMaxLength = length;
+    }
+    if (pcbCurrentLength) {
+      *pcbCurrentLength = length;
+    }
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE Unlock() override { return S_OK; }
+
+  HRESULT STDMETHODCALLTYPE GetCurrentLength(DWORD* pcbCurrentLength) override {
+    if (!pcbCurrentLength) {
+      return E_INVALIDARG;
+	}
+    *pcbCurrentLength = total_size_;
+        return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE SetCurrentLength(DWORD cbCurrentLength) override {
+    if (cbCurrentLength != total_size_) {
+      return E_NOTIMPL;
+	}
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE GetMaxLength(DWORD* pcbMaxLength) override {
+    if (!pcbMaxLength) {
+      return E_INVALIDARG;
+    }
+    *pcbMaxLength = total_size_;
+    return S_OK;
+  }
+
+
+ private:
+  rtc::scoped_refptr<I420BufferInterface> buffer_;
+  int total_size_ = 0;
+};
+
+ComPtr<IMFSample> WinUWPH264EncoderImpl::FromVideoFrame(
+    const VideoFrame& frame) {
   HRESULT hr = S_OK;
   ComPtr<IMFSample> sample;
   ON_SUCCEEDED(MFCreateSample(sample.GetAddressOf()));
@@ -236,33 +298,33 @@ ComPtr<IMFSample> WinUWPH264EncoderImpl::FromVideoFrame(const VideoFrame& frame)
       static_cast<I420BufferInterface*>(frame.video_frame_buffer().get());
 
   if (SUCCEEDED(hr)) {
-    auto totalSize = frameBuffer->StrideY() * frameBuffer->height() +
-      frameBuffer->StrideU() * (frameBuffer->height() + 1) / 2 +
-      frameBuffer->StrideV() * (frameBuffer->height() + 1) / 2;
+    //auto totalSize = frameBuffer->StrideY() * frameBuffer->height() +
+    //                 frameBuffer->StrideU() * (frameBuffer->height() + 1) / 2 +
+    //                 frameBuffer->StrideV() * (frameBuffer->height() + 1) / 2;
 
     ComPtr<IMFMediaBuffer> mediaBuffer;
-    ON_SUCCEEDED(MFCreateMemoryBuffer(totalSize, mediaBuffer.GetAddressOf()));
+    //ON_SUCCEEDED(MFCreateMemoryBuffer(totalSize, mediaBuffer.GetAddressOf()));
 
-    BYTE* destBuffer = nullptr;
-    if (SUCCEEDED(hr)) {
-      DWORD cbMaxLength;
-      DWORD cbCurrentLength;
-      ON_SUCCEEDED(mediaBuffer->Lock(
-        &destBuffer, &cbMaxLength, &cbCurrentLength));
-    }
+    //BYTE* destBuffer = nullptr;
+    //if (SUCCEEDED(hr)) {
+    //  DWORD cbMaxLength;
+    //  DWORD cbCurrentLength;
+    //  ON_SUCCEEDED(
+    //      mediaBuffer->Lock(&destBuffer, &cbMaxLength, &cbCurrentLength));
+    //}
 
-    if (SUCCEEDED(hr)) {
-      BYTE* destUV = destBuffer +
-        (frameBuffer->StrideY() * frameBuffer->height());
-      libyuv::I420ToNV12(
-        frameBuffer->DataY(), frameBuffer->StrideY(),
-        frameBuffer->DataU(), frameBuffer->StrideU(),
-        frameBuffer->DataV(), frameBuffer->StrideV(),
-        destBuffer, frameBuffer->StrideY(),
-        destUV, frameBuffer->StrideY(),
-        frameBuffer->width(),
-        frameBuffer->height());
-    }
+    //if (SUCCEEDED(hr)) {
+    //  BYTE* destUV =
+    //      destBuffer + (frameBuffer->StrideY() * frameBuffer->height());
+    //  libyuv::I420ToNV12(
+    //      frameBuffer->DataY(), frameBuffer->StrideY(), frameBuffer->DataU(),
+    //      frameBuffer->StrideU(), frameBuffer->DataV(), frameBuffer->StrideV(),
+    //      destBuffer, frameBuffer->StrideY(), destUV, frameBuffer->StrideY(),
+    //      frameBuffer->width(), frameBuffer->height());
+    //}
+
+	hr =
+        Microsoft::WRL::MakeAndInitialize<VideoFrameMFBuffer>(&mediaBuffer, frameBuffer);
 
     {
       if (frameBuffer->width() != (int)width_ || frameBuffer->height() != (int)height_) {
@@ -306,12 +368,12 @@ ComPtr<IMFSample> WinUWPH264EncoderImpl::FromVideoFrame(const VideoFrame& frame)
       _sampleAttributeQueue.push(timestampHns, frameAttributes);
     }
 
-    ON_SUCCEEDED(mediaBuffer->SetCurrentLength(
-      frameBuffer->width() * frameBuffer->height() * 3 / 2));
+    //ON_SUCCEEDED(mediaBuffer->SetCurrentLength(frameBuffer->width() *
+    //                                           frameBuffer->height() * 3 / 2));
 
-    if (destBuffer != nullptr) {
-      mediaBuffer->Unlock();
-    }
+    //if (destBuffer != nullptr) {
+    //  mediaBuffer->Unlock();
+    //}
 
     ON_SUCCEEDED(sample->AddBuffer(mediaBuffer.Get()));
 
