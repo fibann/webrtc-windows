@@ -196,6 +196,7 @@ int WinUWPH264EncoderImpl::InitEncode(const VideoCodec* codec_settings,
   if (SUCCEEDED(hr)) {
     inited_ = true;
     lastTimeSettingsChanged_ = rtc::TimeMillis();
+    last_stats_time_ = rtc::TimeMillis();
     return WEBRTC_VIDEO_CODEC_OK;
   }
 
@@ -437,6 +438,18 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
     if (FAILED(hr)) {
       return;
     }
+
+    int64_t now = rtc::TimeMillis();
+    bitrate_window_.AddSample(curLength * 8, now);
+    framerate_window_.AddSample(1, now);
+    if (now - last_stats_time_ > 1000) {
+      int bps = bitrate_window_.GetSumUpTo(now);
+	  int frames = framerate_window_.GetSumUpTo(now);
+      RTC_LOG(LS_INFO) << "RATES: " << frames << " fps - " << bps / 1000 << " kbps";
+      last_stats_time_ = now;
+    }
+
+
     if (curLength == 0) {
       RTC_LOG(LS_WARNING) << "Got empty sample.";
       buffer->Unlock();
