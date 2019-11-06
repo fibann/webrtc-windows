@@ -114,6 +114,32 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
   };
   SampleAttributeQueue<CachedFrameAttributes> _sampleAttributeQueue;
 
+  class RateWindow {
+   public:
+    void AddSample(unsigned long sample, int64_t ts) {
+      samples_.push_back({sample, ts});
+    }
+
+    int GetSumUpTo(int64_t ts) {
+      unsigned long res = 0;
+      while (samples_.front().ts < ts) {
+        res += samples_.front().value;
+        samples_.pop_front();
+      }
+      return res;
+    }
+
+   private:
+    struct Sample {
+      unsigned long value;
+      int64_t ts;
+    };
+
+    std::deque<Sample> samples_;
+  };
+  RateWindow bitrate_window_;
+  RateWindow framerate_window_;
+  int64_t last_stats_time_;
 };  // end of WinUWPH264EncoderImpl class
 
 }  // namespace webrtc
