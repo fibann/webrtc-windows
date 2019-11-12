@@ -56,6 +56,8 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
 
  private:
   ComPtr<IMFSample> FromVideoFrame(const VideoFrame& frame);
+  int InitWriter();
+  int ReleaseWriter();
   LONGLONG GetFrameTimestampHns(const VideoFrame& frame) const;
   int ReconfigureSinkWriter(UINT32 new_width,
                             UINT32 new_height,
