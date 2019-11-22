@@ -492,8 +492,6 @@ int WinUWPH264EncoderImpl::Encode(
 
   HRESULT hr = S_OK;
 
-  codecSpecificInfo_ = codec_specific_info;
-
   ComPtr<IMFSample> sample;
   {
     rtc::CritScope lock(&crit_);

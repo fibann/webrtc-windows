@@ -68,7 +68,6 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
   rtc::CriticalSection crit_;
   rtc::CriticalSection callbackCrit_;
   bool inited_ {};
-  const CodecSpecificInfo* codecSpecificInfo_ {};
   ComPtr<IMFSinkWriter> sinkWriter_;
   ComPtr<H264MediaSink> mediaSink_;
   EncodedImageCallback* encodedCompleteCallback_ {};
