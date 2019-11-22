@@ -180,6 +180,7 @@ int WinUWPH264EncoderImpl::InitEncode(const VideoCodec* codec_settings,
 
   ON_SUCCEEDED(InitWriter());
 
+  inited_ = true;
   return hr;
 }
 
@@ -262,7 +263,6 @@ int WinUWPH264EncoderImpl::InitWriter() {
   ON_SUCCEEDED(sinkWriter_->BeginWriting());
 
   if (SUCCEEDED(hr)) {
-    inited_ = true;
     last_rate_change_time_rtc_ms = rtc::TimeMillis();
     return WEBRTC_VIDEO_CODEC_OK;
   } else {
@@ -292,7 +292,6 @@ int WinUWPH264EncoderImpl::ReleaseWriter() {
     startTime_ = 0;
     lastTimestampHns_ = 0;
     firstFrame_ = true;
-    inited_ = false;
     _sampleAttributeQueue.clear();
     rtc::CritScope callbackLock(&callbackCrit_);
     encodedCompleteCallback_ = nullptr;
@@ -305,6 +304,7 @@ int WinUWPH264EncoderImpl::ReleaseWriter() {
 }
 
 int WinUWPH264EncoderImpl::Release() {
+  inited_ = false;
   ReleaseWriter();
   HRESULT hr = S_OK;
   ON_SUCCEEDED(MFShutdown());
