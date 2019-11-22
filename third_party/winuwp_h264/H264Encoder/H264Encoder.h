@@ -55,7 +55,7 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
   void OnH264Encoded(ComPtr<IMFSample> sample) override;
 
  private:
-  ComPtr<IMFSample> FromVideoFrame(const VideoFrame& frame);
+  static ComPtr<IMFSample> FromVideoFrame(const VideoFrame& frame, CachedFrameAttributes& attributes);
   int InitWriter();
   int ReleaseWriter();
   LONGLONG GetFrameTimestampHns(const VideoFrame& frame) const;
@@ -88,7 +88,6 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
 
   UINT32 width_;
   UINT32 height_;
-  UINT32 encoded_height_;
   UINT32 frame_rate_;
   UINT32 target_bps_;
   VideoCodecMode mode_;
@@ -111,6 +110,7 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
     uint32_t frameHeight;
   };
   SampleAttributeQueue<CachedFrameAttributes> _sampleAttributeQueue;
+  rtc::CriticalSection attrQueueCrit_;
 
 };  // end of WinUWPH264EncoderImpl class
 
