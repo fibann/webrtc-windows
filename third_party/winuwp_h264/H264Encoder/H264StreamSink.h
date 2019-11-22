@@ -13,6 +13,7 @@
 
 #include <mfidl.h>
 #include <Mferror.h>
+#include <atomic>
 #include <list>
 
 #include "../Utils/Async.h"
@@ -145,7 +146,6 @@ class H264StreamSink : public Microsoft::WRL::RuntimeClass<
 
  private:
   CritSec                     critSec_;
-  CritSec                     cbCritSec_;
 
   DWORD                       dwIdentifier_;
   State                       state_;
@@ -162,7 +162,7 @@ class H264StreamSink : public Microsoft::WRL::RuntimeClass<
 
   AsyncCallback<H264StreamSink>               workQueueCB_;
 
-  IH264EncodingCallback*                      encodingCallback_;
+  std::atomic<IH264EncodingCallback*> encodingCallback_;
 };
 
 }  // namespace webrtc

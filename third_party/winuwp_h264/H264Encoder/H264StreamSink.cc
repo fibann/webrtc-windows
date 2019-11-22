@@ -441,7 +441,7 @@ HRESULT H264StreamSink::Shutdown() {
     spEventQueue_.Reset();
     spCurrentType_.Reset();
 
-    encodingCallback_ = nullptr;
+    encodingCallback_.store(nullptr, std::memory_order_relaxed);
 
     isShutdown_ = true;
   }
@@ -523,9 +523,9 @@ HRESULT H264StreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult) {
   }
 
   if (SUCCEEDED(hr) && sample != nullptr) {
-    AutoLock lock(cbCritSec_);
-    if (encodingCallback_ != nullptr) {
-      encodingCallback_->OnH264Encoded(sample);
+    auto cb = encodingCallback_.load(std::memory_order_acquire);
+    if (cb != nullptr) {
+      cb->OnH264Encoded(sample);
     }
   }
 
@@ -596,8 +596,7 @@ HRESULT AsyncStreamSinkOperation::GetPropVariant(PROPVARIANT* propVariant) {
 
 HRESULT H264StreamSink::RegisterEncodingCallback(
   IH264EncodingCallback *callback) {
-  AutoLock lock(cbCritSec_);
-  encodingCallback_ = callback;
+  encodingCallback_.store(callback, std::memory_order_release);
   return S_OK;
 }
 
