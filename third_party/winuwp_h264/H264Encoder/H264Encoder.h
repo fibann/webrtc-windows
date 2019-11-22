@@ -76,7 +76,6 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
   LONGLONG startTime_ {};
   LONGLONG lastTimestampHns_ {};
   bool firstFrame_ {true};
-  int framePendingCount_ {};
   DWORD frameCount_ {};
   bool lastFrameDropped_ {};
   //These fields are never used

@@ -293,7 +293,6 @@ int WinUWPH264EncoderImpl::ReleaseWriter() {
     lastTimestampHns_ = 0;
     firstFrame_ = true;
     inited_ = false;
-    framePendingCount_ = 0;
     _sampleAttributeQueue.clear();
     rtc::CritScope callbackLock(&callbackCrit_);
     encodedCompleteCallback_ = nullptr;
@@ -522,7 +521,6 @@ int WinUWPH264EncoderImpl::Encode(
     ON_SUCCEEDED(sinkWriter_->NotifyEndOfSegment(streamIndex_));
   }
 
-  ++framePendingCount_;
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
@@ -632,7 +630,6 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
 
     {
       rtc::CritScope lock(&callbackCrit_);
-      --framePendingCount_;
 
 	  if (encodedCompleteCallback_ != nullptr) {
 		CodecSpecificInfo codecSpecificInfo;
