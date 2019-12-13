@@ -480,6 +480,11 @@ int WinUWPH264EncoderImpl::Encode(
     for (auto frameType : *frame_types) {
       if (frameType == kVideoFrameKey) {
         RTC_LOG(LS_INFO) << "Key frame requested in H264 encoder.";
+        std::stringstream str;
+        str << "Keyframe requested - last was "
+            << (frameCount_ - last_keyframe_req_frame_count) << " frames ago\n";
+        OutputDebugStringA(str.str().c_str());
+        last_keyframe_req_frame_count = frameCount_;
         ComPtr<IMFSinkWriterEncoderConfig> encoderConfig;
         sinkWriter_.As(&encoderConfig);
         ComPtr<IMFAttributes> encoderAttributes;
@@ -517,7 +522,7 @@ int WinUWPH264EncoderImpl::Encode(
 
   rtc::CritScope lock(&crit_);
   //// Some threads online mention this is useful to do regularly.
-  //++frameCount_;
+  ++frameCount_;
   //if (frameCount_ % 30 == 0) {
   //  ON_SUCCEEDED(sinkWriter_->NotifyEndOfSegment(streamIndex_));
   //}
@@ -616,6 +621,14 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
         ++fragIdx;
         i += 5;
       }
+    }
+    if (encodedImage._frameType == kVideoFrameKey) {
+      std::stringstream str;
+      str << "Keyframe produced. Last was "
+          << (frameCount_ - last_keyframe_produced_frame_count)
+          << " frames ago\n";
+      OutputDebugStringA(str.str().c_str());
+      last_keyframe_produced_frame_count = frameCount_;
     }
     // Set the length of the last fragment.
     if (fragIdx > 0) {
