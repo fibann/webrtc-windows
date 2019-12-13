@@ -254,7 +254,14 @@ int WinUWPH264EncoderImpl::InitWriter() {
   ON_SUCCEEDED(sinkWriter_->AddStream(mediaTypeOut.Get(), &streamIndex_));
 
   // SinkWriter encoder properties
-  ON_SUCCEEDED(sinkWriter_->SetInputMediaType(streamIndex_, mediaTypeIn.Get(), nullptr));
+  ComPtr<IMFAttributes> encodingAttributes;
+  ON_SUCCEEDED(MFCreateAttributes(&encodingAttributes, 1));
+  ON_SUCCEEDED(
+      encodingAttributes->SetUINT32(CODECAPI_AVEncMPVGOPSize, 3 * frame_rate_));
+  //ON_SUCCEEDED(
+  //    encodingAttributes->SetUINT32(CODECAPI_AVEncVideoMaxQP, 40));
+  ON_SUCCEEDED(
+      sinkWriter_->SetInputMediaType(streamIndex_, mediaTypeIn.Get(), encodingAttributes.Get()));
 
   // Register this as the callback for encoded samples.
   ON_SUCCEEDED(mediaSink_->RegisterEncodingCallback(this));
