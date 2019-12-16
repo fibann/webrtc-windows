@@ -144,6 +144,8 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
   RateWindow bitrate_window_;
   RateWindow framerate_window_;
   int64_t last_stats_time_;
+  webrtc::H264BitstreamParser h264_bitstream_parser_;
+
 };  // end of WinUWPH264EncoderImpl class
 
 }  // namespace webrtc

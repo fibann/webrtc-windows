@@ -256,10 +256,10 @@ int WinUWPH264EncoderImpl::InitWriter() {
   // SinkWriter encoder properties
   ComPtr<IMFAttributes> encodingAttributes;
   ON_SUCCEEDED(MFCreateAttributes(&encodingAttributes, 1));
-  ON_SUCCEEDED(
-      encodingAttributes->SetUINT32(CODECAPI_AVEncMPVGOPSize, 3 * frame_rate_));
   //ON_SUCCEEDED(
-  //    encodingAttributes->SetUINT32(CODECAPI_AVEncVideoMaxQP, 40));
+  //    encodingAttributes->SetUINT32(CODECAPI_AVEncMPVGOPSize, 3 * frame_rate_));
+  //ON_SUCCEEDED(
+      //encodingAttributes->SetUINT32(CODECAPI_AVEncVideoMaxQP, 40));
   ON_SUCCEEDED(
       sinkWriter_->SetInputMediaType(streamIndex_, mediaTypeIn.Get(), encodingAttributes.Get()));
 
@@ -512,7 +512,7 @@ int WinUWPH264EncoderImpl::Encode(
   {
     rtc::CritScope lock(&crit_);
     // Only encode the frame if the encoder pipeline is not full.
-    if (_sampleAttributeQueue.size() <= 2) {
+    if (_sampleAttributeQueue.size() <= 100) {
       sample = FromVideoFrame(frame);
     }
   }
@@ -531,9 +531,9 @@ int WinUWPH264EncoderImpl::Encode(
   rtc::CritScope lock(&crit_);
   //// Some threads online mention this is useful to do regularly.
   ++frameCount_;
-  //if (frameCount_ % 30 == 0) {
-  //  ON_SUCCEEDED(sinkWriter_->NotifyEndOfSegment(streamIndex_));
-  //}
+  if (frameCount_ % 30 == 0) {
+    ON_SUCCEEDED(sinkWriter_->NotifyEndOfSegment(streamIndex_));
+  }
 
   ++framePendingCount_;
   return WEBRTC_VIDEO_CODEC_OK;
@@ -573,7 +573,10 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
     if (now - last_stats_time_ > 1000) {
       int bps = bitrate_window_.GetSumUpTo(now);
 	  int frames = framerate_window_.GetSumUpTo(now);
-      RTC_LOG(LS_INFO) << "RATES: " << frames << " fps - " << bps / 1000 << " kbps";
+      std::stringstream str;
+      str << "RATES: " << frames << " fps - " << bps / 1000 << " kbps";
+      str << "\n";
+      OutputDebugStringA(str.str().c_str());
       last_stats_time_ = now;
     }
 
@@ -656,6 +659,13 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
         sendBuffer.size() -
         fragmentationHeader.fragmentationOffset[fragIdx - 1];
     }
+
+    h264_bitstream_parser_.ParseBitstream(encodedImage._buffer,
+                                          encodedImage._length);
+    h264_bitstream_parser_.GetLastSliceQp(&encodedImage.qp_);
+    char buf[128];
+    sprintf(buf, "Encoder QP: %d\n", encodedImage.qp_);
+    OutputDebugStringA(buf);
 
     encodedImage.SetTimestamp(frameAttributes.timestamp);
     encodedImage.ntp_time_ms_ = frameAttributes.ntpTime;
