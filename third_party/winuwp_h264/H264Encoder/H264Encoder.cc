@@ -518,7 +518,9 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
     if (now - last_stats_time_ > 1000) {
       int bps = bitrate_window_.GetSumUpTo(now);
 	  int frames = framerate_window_.GetSumUpTo(now);
-      RTC_LOG(LS_INFO) << "RATES: " << frames << " fps - " << bps / 1000 << " kbps";
+      std::stringstream str;
+      str << "RATES: " << frames << " fps - " << bps / 1000 << " kbps\n";
+          OutputDebugStringA(str.str().c_str());
       last_stats_time_ = now;
     }
 
