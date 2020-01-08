@@ -23,6 +23,7 @@
 #include "rtc_base/criticalsection.h"
 #include "modules/video_coding/utility/quality_scaler.h"
 #include "common_video/h264/h264_bitstream_parser.h"
+#include <fstream>
 
 #pragma comment(lib, "mfreadwrite")
 #pragma comment(lib, "mfplat")
@@ -111,6 +112,7 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
 
   struct CachedFrameAttributes {
     uint32_t timestamp;
+    uint32_t duration;
     uint64_t ntpTime;
     uint64_t captureRenderTime;
     uint32_t frameWidth;
@@ -133,6 +135,15 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
       return res;
     }
 
+    int GetMaxUpTo(int64_t ts) {
+      unsigned long res = 0;
+      while (samples_.front().ts < ts) {
+        res = std::max(res, samples_.front().value);
+        samples_.pop_front();
+      }
+      return res;
+    }
+
    private:
     struct Sample {
       unsigned long value;
@@ -141,6 +152,9 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
 
     std::deque<Sample> samples_;
   };
+
+  std::ofstream compressed_file_out_;
+  std::ofstream uncompressed_file_out_;
   RateWindow bitrate_window_;
   RateWindow framerate_window_;
   int64_t last_stats_time_;
