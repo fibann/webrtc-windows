@@ -114,6 +114,8 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
   };
   SampleAttributeQueue<CachedFrameAttributes> _sampleAttributeQueue;
 
+  H264::Profile profile_;
+
 };  // end of WinUWPH264EncoderImpl class
 
 }  // namespace webrtc

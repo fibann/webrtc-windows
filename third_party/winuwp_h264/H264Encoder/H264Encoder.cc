@@ -20,6 +20,8 @@
 #include <codecapi.h>
 #include <mfreadwrite.h>
 #include <wrl\implements.h>
+
+#include <atomic>
 #include <sstream>
 #include <vector>
 #include <iomanip>
@@ -46,6 +48,13 @@ static constexpr int kFrameHeightNoChange = 0;
 static constexpr int kFrameHeightCrop = 1;
 static constexpr int kFrameHeightPad = 2;
 int webrtc__WinUWPH264EncoderImpl__frame_height_round_mode = kFrameHeightNoChange;
+
+// Determines which H.264 profile to use for encoding.
+// Note: by default we should use what's passed by WebRTC on codec
+// initialization (which seems to be always ConstrainedBaseline), but we use
+// Baseline to avoid changing behavior compared to earlier versions.
+std::atomic<webrtc::H264::Profile> webrtc__WinUWPH264EncoderImpl__profile =
+    webrtc::H264::kProfileBaseline;
 
 namespace webrtc {
 
@@ -132,6 +141,9 @@ int WinUWPH264EncoderImpl::InitEncode(const VideoCodec* codec_settings,
     target_bps_ = width_ * height_ * 2;
   }
 
+  // Initialize the profile for the track encoded by this object.
+  profile_ = webrtc__WinUWPH264EncoderImpl__profile.load();
+
   // Configure the encoder.
   HRESULT hr = S_OK;
   ON_SUCCEEDED(MFStartup(MF_VERSION));
@@ -153,9 +165,35 @@ int WinUWPH264EncoderImpl::InitWriter() {
   ON_SUCCEEDED(MFCreateMediaType(&mediaTypeOut));
   ON_SUCCEEDED(mediaTypeOut->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video));
   ON_SUCCEEDED(mediaTypeOut->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264));
-  // Lumia 635 and Lumia 1520 Windows phones don't work well
-  // with constrained baseline profile.
-  //ON_SUCCEEDED(mediaTypeOut->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_ConstrainedBase));
+
+  eAVEncH264VProfile mf_profile;
+  switch (profile_) {
+    case H264::kProfileConstrainedBaseline:
+      mf_profile = eAVEncH264VProfile_ConstrainedBase;
+      RTC_LOG_F(LS_INFO) << "Using Constrained Baseline profile";
+      break;
+    case H264::kProfileBaseline:
+      mf_profile = eAVEncH264VProfile_Base;
+      RTC_LOG_F(LS_INFO) << "Using Baseline profile";
+      break;
+    case H264::kProfileMain:
+      mf_profile = eAVEncH264VProfile_Main;
+      RTC_LOG_F(LS_INFO) << "Using Main profile";
+      break;
+    case H264::kProfileConstrainedHigh:
+      mf_profile = eAVEncH264VProfile_ConstrainedHigh;
+      RTC_LOG_F(LS_INFO) << "Using Constrained High profile";
+      break;
+    case H264::kProfileHigh:
+      mf_profile = eAVEncH264VProfile_High;
+      RTC_LOG_F(LS_INFO) << "Using High profile";
+      break;
+    default:
+      return WEBRTC_VIDEO_CODEC_ERROR;
+      break;
+  }
+  ON_SUCCEEDED(mediaTypeOut->SetUINT32(MF_MT_MPEG2_PROFILE, mf_profile));
+
 
   ON_SUCCEEDED(mediaTypeOut->SetUINT32(
     MF_MT_AVG_BITRATE, target_bps_));
