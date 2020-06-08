@@ -241,6 +241,8 @@ int WinUWPH264EncoderImpl::InitWriter() {
   // SinkWriter encoder properties
   ComPtr<IMFAttributes> encodingAttributes;
   ON_SUCCEEDED(MFCreateAttributes(&encodingAttributes, 1));
+  ON_SUCCEEDED(
+      encodingAttributes->SetUINT32(CODECAPI_AVEncH264CABACEnable, VARIANT_TRUE));
 
   // kMaxH264Qp is the default.
   if (max_qp_ < kMaxH264Qp) {
