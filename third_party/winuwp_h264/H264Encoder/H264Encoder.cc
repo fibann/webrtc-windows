@@ -56,6 +56,10 @@ int webrtc__WinUWPH264EncoderImpl__frame_height_round_mode = kFrameHeightNoChang
 std::atomic<webrtc::H264::Profile> webrtc__WinUWPH264EncoderImpl__profile =
     webrtc::H264::kProfileBaseline;
 
+int webrtc__WinUWPH264EncoderImpl__maxQp = -1;
+int webrtc__WinUWPH264EncoderImpl__quality = -1;
+int webrtc__WinUWPH264EncoderImpl__record = 0;
+
 namespace webrtc {
 
 // QP scaling thresholds.
@@ -77,12 +81,49 @@ static constexpr float kMinRateVariation = 0.1f;
 // H264 WinUWP Encoder Implementation
 //////////////////////////////////////////
 
-WinUWPH264EncoderImpl::WinUWPH264EncoderImpl()
-{
+WinUWPH264EncoderImpl::WinUWPH264EncoderImpl() {
+  HRESULT hr = S_OK;
+  if (webrtc__WinUWPH264EncoderImpl__record) {
+    ComPtr<ABI::Windows::Storage::IApplicationDataStatics> appDataStatics;
+    ON_SUCCEEDED(Windows::Foundation::GetActivationFactory(
+        Microsoft::WRL::Wrappers::HStringReference(
+            RuntimeClass_Windows_Storage_ApplicationData)
+            .Get(),
+        &appDataStatics));
+    ComPtr<ABI::Windows::Storage::IApplicationData> appData;
+    ON_SUCCEEDED(appDataStatics->get_Current(&appData));
+    ComPtr<ABI::Windows::Storage::IStorageFolder> folder;
+    ON_SUCCEEDED(appData->get_LocalFolder(&folder));
+    ComPtr<ABI::Windows::Storage::IStorageItem> asItem;
+    ON_SUCCEEDED(folder.As(&asItem));
+    Microsoft::WRL::Wrappers::HString path;
+    ON_SUCCEEDED(asItem->get_Path(path.GetAddressOf()));
+
+    unsigned length;
+    auto ptr = path.GetRawBuffer(&length);
+    std::string folderNameA(ptr, ptr + length);
+
+    compressed_file_out_.open(folderNameA + "\\compressed.dat",
+                              std::ifstream::binary);
+    uncompressed_file_out_.open(folderNameA + "\\uncompressed_enc.dat",
+                                std::ifstream::binary);
+
+    bool is_ok = compressed_file_out_.good();
+    is_ok = uncompressed_file_out_.good();
+  }
+  ON_SUCCEEDED(MFStartup(MF_VERSION));
 }
 
 WinUWPH264EncoderImpl::~WinUWPH264EncoderImpl() {
   Release();
+  HRESULT hr = S_OK;
+  ON_SUCCEEDED(MFShutdown());
+  if (uncompressed_file_out_.is_open()) {
+    uncompressed_file_out_.close();
+  }
+  if (compressed_file_out_.is_open()) {
+    compressed_file_out_.close();
+  }
 }
 
 namespace {
@@ -146,7 +187,6 @@ int WinUWPH264EncoderImpl::InitEncode(const VideoCodec* codec_settings,
 
   // Configure the encoder.
   HRESULT hr = S_OK;
-  ON_SUCCEEDED(MFStartup(MF_VERSION));
 
   ON_SUCCEEDED(InitWriter());
 
@@ -244,12 +284,22 @@ int WinUWPH264EncoderImpl::InitWriter() {
   ON_SUCCEEDED(
       encodingAttributes->SetUINT32(CODECAPI_AVEncH264CABACEnable, VARIANT_TRUE));
 
+  if (webrtc__WinUWPH264EncoderImpl__maxQp >= 26) {
+    max_qp_ = webrtc__WinUWPH264EncoderImpl__maxQp;
+  }
+
   // kMaxH264Qp is the default.
   if (max_qp_ < kMaxH264Qp) {
     RTC_LOG(LS_INFO) << "Set max QP to " << max_qp_;
     ON_SUCCEEDED(
         encodingAttributes->SetUINT32(CODECAPI_AVEncVideoMaxQP, max_qp_));
   }
+
+  if (webrtc__WinUWPH264EncoderImpl__quality >= 0) {
+    encodingAttributes->SetUINT32(CODECAPI_AVEncCommonQuality,
+                                  webrtc__WinUWPH264EncoderImpl__quality);
+  }
+
   ON_SUCCEEDED(sinkWriter_->SetInputMediaType(streamIndex_, mediaTypeIn.Get(),
                                               encodingAttributes.Get()));
 
@@ -257,7 +307,6 @@ int WinUWPH264EncoderImpl::InitWriter() {
   ON_SUCCEEDED(mediaSink_->RegisterEncodingCallback(this));
 
   ON_SUCCEEDED(sinkWriter_->BeginWriting());
-
   if (SUCCEEDED(hr)) {
     inited_ = true;
     last_rate_change_time_rtc_ms = rtc::TimeMillis();
@@ -304,10 +353,11 @@ int WinUWPH264EncoderImpl::ReleaseWriter() {
 
 int WinUWPH264EncoderImpl::Release() {
   ReleaseWriter();
-  HRESULT hr = S_OK;
-  ON_SUCCEEDED(MFShutdown());
+
   return WEBRTC_VIDEO_CODEC_OK;
 }
+
+int64_t first_frame_ts = -1;
 
 ComPtr<IMFSample> WinUWPH264EncoderImpl::FromVideoFrame(const VideoFrame& frame) {
   HRESULT hr = S_OK;
@@ -337,7 +387,7 @@ ComPtr<IMFSample> WinUWPH264EncoderImpl::FromVideoFrame(const VideoFrame& frame)
   int padding_top_uv = padding_top_y / 2;
   int padding_bottom_uv = encoded_height / 2 - dst_height_uv - padding_top_uv;
 
-  if (SUCCEEDED(hr)) {
+  //if (SUCCEEDED(hr)) {
     ComPtr<IMFMediaBuffer> mediaBuffer;
     ON_SUCCEEDED(MFCreateMemoryBuffer(totalSize, mediaBuffer.GetAddressOf()));
 
@@ -399,9 +449,9 @@ ComPtr<IMFSample> WinUWPH264EncoderImpl::FromVideoFrame(const VideoFrame& frame)
 
     auto timestampHns = GetFrameTimestampHns(frame);
     ON_SUCCEEDED(sample->SetSampleTime(timestampHns));
+    auto durationHns = timestampHns - lastTimestampHns_;
 
     if (SUCCEEDED(hr)) {
-      auto durationHns = timestampHns - lastTimestampHns_;
       hr = sample->SetSampleDuration(durationHns);
     }
 
@@ -431,6 +481,18 @@ ComPtr<IMFSample> WinUWPH264EncoderImpl::FromVideoFrame(const VideoFrame& frame)
       lastFrameDropped_ = false;
       sampleAttributes->SetUINT32(MFSampleExtension_Discontinuity, TRUE);
     }
+  //}
+  int now = rtc::TimeMillis();
+  if (first_frame_ts < 0) {
+    first_frame_ts = now;
+  }
+  //int32_t now_delta = now - first_frame_ts;
+  if (webrtc__WinUWPH264EncoderImpl__record && record_) {
+    uncompressed_file_out_.write((char*)&timestampHns, sizeof(timestampHns));
+    uncompressed_file_out_.write((char*)&durationHns, sizeof(durationHns));
+    // uncompressed_file_out_.write((char*)&now_delta, sizeof(now_delta));
+    uncompressed_file_out_.write((char*)&totalSize, sizeof(totalSize));
+    uncompressed_file_out_.write((char*)destBuffer, totalSize);
   }
 
   return sample;
@@ -497,7 +559,7 @@ int WinUWPH264EncoderImpl::Encode(
   {
     rtc::CritScope lock(&crit_);
     // Only encode the frame if the encoder pipeline is not full.
-    if (_sampleAttributeQueue.size() <= 2) {
+    if (_sampleAttributeQueue.size() <= 100) {
       sample = FromVideoFrame(frame);
     }
   }
@@ -515,18 +577,28 @@ int WinUWPH264EncoderImpl::Encode(
 
   rtc::CritScope lock(&crit_);
   //// Some threads online mention this is useful to do regularly.
-  //++frameCount_;
+  ++frameCount_;
   //if (frameCount_ % 30 == 0) {
   //  ON_SUCCEEDED(sinkWriter_->NotifyEndOfSegment(streamIndex_));
   //}
+
+  if (frameCount_ % 100 == 0) {
+    uncompressed_file_out_.flush();
+    compressed_file_out_.flush();
+  }
 
   ++framePendingCount_;
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
+int64_t first_decoded_ts = -1;
+
 void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
   DWORD totalLength;
   HRESULT hr = S_OK;
+
+  int64_t now = rtc::TimeMillis();
+
   ON_SUCCEEDED(sample->GetTotalLength(&totalLength));
 
   LONGLONG sampleTimestamp = 0;
@@ -543,10 +615,10 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
   ComPtr<IMFMediaBuffer> buffer;
   hr = sample->GetBufferByIndex(0, &buffer);
 
+  DWORD curLength;
   if (SUCCEEDED(hr)) {
     BYTE* byteBuffer;
     DWORD maxLength;
-    DWORD curLength;
     hr = buffer->Lock(&byteBuffer, &maxLength, &curLength);
     if (FAILED(hr)) {
       return;
@@ -559,6 +631,12 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
     std::vector<byte> sendBuffer;
     sendBuffer.resize(curLength);
     memcpy(sendBuffer.data(), byteBuffer, curLength);
+
+    LONGLONG zero = 0;
+    if (first_decoded_ts < 0) {
+      first_decoded_ts = now;
+    }
+
     hr = buffer->Unlock();
     if (FAILED(hr)) {
       return;
@@ -640,6 +718,22 @@ void WinUWPH264EncoderImpl::OnH264Encoded(ComPtr<IMFSample> sample) {
 		  encodedImage, &codecSpecificInfo, &fragmentationHeader);
 	  }
     }
+
+    bool rec;
+    {
+      rtc::CritScope lock(&crit_);
+      rec = record_;
+    }
+
+    if (webrtc__WinUWPH264EncoderImpl__record && rec) {
+      // int32_t now_delta = now - first_decoded_ts;
+      compressed_file_out_.write((char*)&sampleTimestamp,
+                                 sizeof(sampleTimestamp));
+      compressed_file_out_.write((char*)&zero, sizeof(zero));
+      // compressed_file_out_.write((char*)&now_delta, sizeof(now_delta));
+      compressed_file_out_.write((char*)&curLength, sizeof(curLength));
+      compressed_file_out_.write((char*)encodedImage._buffer, curLength);
+    }
   }
 }
 
@@ -656,8 +750,13 @@ int WinUWPH264EncoderImpl::SetRates(uint32_t new_bitrate_kbit,
   if (sinkWriter_ == nullptr) {
     return WEBRTC_VIDEO_CODEC_UNINITIALIZED;
   }
-  RTC_LOG(LS_INFO) << "WinUWPH264EncoderImpl::SetRates(" << new_bitrate_kbit
-                   << "kbit " << new_framerate << "fps)";
+  {
+    std::stringstream str;
+    /*RTC_LOG(LS_INFO)*/ str << "WinUWPH264EncoderImpl::SetRates(" << new_bitrate_kbit
+                     << "kbit " << new_framerate << "fps)";
+    str <<"\n";
+    OutputDebugStringA(str.str().c_str());
+  }
 
   // This may happen. Ignore it.
   if (new_framerate == 0) {
@@ -719,6 +818,10 @@ int WinUWPH264EncoderImpl::ReconfigureSinkWriter(UINT32 new_width,
 #endif
 
   if (resUpdated || bitrateUpdated || fpsUpdated) {
+    if (frame_rate_ <= 30) {
+      record_ = true;
+    }
+
     EncodedImageCallback* tempCallback = encodedCompleteCallback_;
     ReleaseWriter();
     {

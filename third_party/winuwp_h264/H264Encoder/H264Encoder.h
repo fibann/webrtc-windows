@@ -23,6 +23,7 @@
 #include "rtc_base/criticalsection.h"
 #include "modules/video_coding/utility/quality_scaler.h"
 #include "common_video/h264/h264_bitstream_parser.h"
+#include <fstream>
 
 #pragma comment(lib, "mfreadwrite")
 #pragma comment(lib, "mfplat")
@@ -107,6 +108,7 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
 
   struct CachedFrameAttributes {
     uint32_t timestamp;
+    uint32_t duration;
     uint64_t ntpTime;
     uint64_t captureRenderTime;
     uint32_t frameWidth;
@@ -116,6 +118,9 @@ class WinUWPH264EncoderImpl : public VideoEncoder, public IH264EncodingCallback 
 
   H264::Profile profile_;
 
+  std::ofstream compressed_file_out_;
+  std::ofstream uncompressed_file_out_;
+  bool record_ = false;
 };  // end of WinUWPH264EncoderImpl class
 
 }  // namespace webrtc
