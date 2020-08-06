@@ -29,6 +29,8 @@
 #pragma comment(lib, "mfplat")
 #pragma comment(lib, "mfuuid")
 
+enum class Mode { CBR = 0, VBR = 1, Quality = 2 };
+
 namespace webrtc {
 
 class H264MediaSink;

@@ -56,6 +56,7 @@ int webrtc__WinUWPH264EncoderImpl__frame_height_round_mode = kFrameHeightNoChang
 std::atomic<webrtc::H264::Profile> webrtc__WinUWPH264EncoderImpl__profile =
     webrtc::H264::kProfileBaseline;
 
+int webrtc__WinUWPH264EncoderImpl__mode = (int)Mode::CBR;
 int webrtc__WinUWPH264EncoderImpl__maxQp = -1;
 int webrtc__WinUWPH264EncoderImpl__quality = -1;
 int webrtc__WinUWPH264EncoderImpl__record = 0;
@@ -280,9 +281,29 @@ int WinUWPH264EncoderImpl::InitWriter() {
 
   // SinkWriter encoder properties
   ComPtr<IMFAttributes> encodingAttributes;
-  ON_SUCCEEDED(MFCreateAttributes(&encodingAttributes, 1));
+  ON_SUCCEEDED(MFCreateAttributes(&encodingAttributes, 3));
+
+  eAVEncCommonRateControlMode mode;
+  switch ((Mode)webrtc__WinUWPH264EncoderImpl__mode) {
+    case Mode::CBR:
+      mode = eAVEncCommonRateControlMode_CBR;
+      break;
+    case Mode::VBR:
+      mode = eAVEncCommonRateControlMode_UnconstrainedVBR;
+      break;
+    case Mode::Quality:
+      mode = eAVEncCommonRateControlMode_Quality;
+      break;
+    default:
+      __debugbreak();
+  }
+
+  ON_SUCCEEDED(encodingAttributes->SetUINT32(CODECAPI_AVEncCommonRateControlMode,
+                                             mode));
   ON_SUCCEEDED(
       encodingAttributes->SetUINT32(CODECAPI_AVEncH264CABACEnable, VARIANT_TRUE));
+  ON_SUCCEEDED(
+      encodingAttributes->SetUINT32(CODECAPI_AVEncMPVGOPSize, frame_rate_ * 4));
 
   if (webrtc__WinUWPH264EncoderImpl__maxQp >= 26) {
     max_qp_ = webrtc__WinUWPH264EncoderImpl__maxQp;
